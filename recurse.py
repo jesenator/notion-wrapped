@@ -46,10 +46,12 @@ class NotionRecurser:
           print(f"reducing function with cached data not yet implemented")
 
         for i, block_data in enumerate(self.blocks_cache):
+          if (kwargs.get('max_blocks') and i > kwargs.get('max_blocks')) or kwargs.get('max_children') and block_data['child_num'] > kwargs.get('max_children'):
+            break
+          if(kwargs.get('max_depth') and block_data['depth'] > kwargs.get('max_depth')):
+            continue
           if kwargs.get('mapping_function'):
             kwargs.get('mapping_function')(block_data['block'], (block_data['depth'], block_data['child_num'], i, block_data['is_main_thread']))
-          if (kwargs.get('max_blocks') and i > kwargs.get('max_blocks')) or (kwargs.get('max_depth') and block_data['depth'] > kwargs.get('max_depth')) or (kwargs.get('max_children') and block_data['child_num'] > kwargs.get('max_children')):
-            break
         
       elif cache_mode == 'save':
         mapping_function = kwargs.pop('mapping_function')

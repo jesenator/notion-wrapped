@@ -31,7 +31,7 @@ import utils
 ######################################################################
 
 class Analytics:
-  def __init__(self, api_token, show_graphs=False, get_users=True, anonymous_network_graph=False, pathname="analytics"):
+  def __init__(self, api_token, show_graphs=False, get_users=True, anonymous_network_graph=False, word_cloud_as_notion_logo=False, pathname="analytics"):
     self.api_token = api_token
     self.total_word_count = 0
     self.total_block_count = 0
@@ -53,6 +53,7 @@ class Analytics:
 
     self.show_graphs = show_graphs
     self.anonymous_network_graph = anonymous_network_graph     
+    self.word_cloud_as_notion_logo = word_cloud_as_notion_logo
 
     if not self.show_graphs:
       plt.ioff()  # Turn off interactive mode if not showing graphs
@@ -67,6 +68,8 @@ class Analytics:
     self.init_network_graph()
 
     self.progress_bar = tqdm(position=1, desc="Recursing", unit="block", leave=True, smoothing=0.05, colour="green") # smoothing 0 is full average, 1 is instant, .3 is deafult
+
+    self.last_file_update = 0
 
   def end_of_recursion(self):
     self.update_file()
@@ -205,8 +208,13 @@ class Analytics:
           self.G.add_node(parent_id, size=size, label="unknown", color="#ffffff", type="unknown", level=depth)
 
 
+    current_time = time.time()
+    if current_time - self.last_file_update < 5:
+      return
+    self.last_file_update = current_time
+
     self.update_file()
-    if self.show_graphs and (is_main_thread or self.total_block_count < 0 or self.total_block_count % 10 == 0):   
+    if self.show_graphs and is_main_thread:   
       self.update_time_plot()
       self.update_day_plot()
       self.update_word_cloud()
@@ -297,7 +305,7 @@ class Analytics:
 
   def update_network_graph(self, end=False):
     if end:
-      print("Saving network graph")
+      print("Processing network graph")
       
       # Find nodes to remove (non-child_page nodes)
       types_to_prune = ['column', 'column_list', 'divider']
@@ -327,18 +335,18 @@ class Analytics:
       for node in nodes_to_remove:
         self.G.remove_node(node)
 
-      print('converting networkx to pyvis')
+      print('Converting networkx to pyvis')
       dimensions = ("1300px", "100%") # if self.anonymous_network_graph else ("1920px", "1920px")
       net = Network(height=dimensions[0], width=dimensions[1], bgcolor="black", font_color="white")
       # , select_menu=True, filter_menu=True
-      print('calculating node positions')
+      print('Calculating node positions')
       # Create a copy of the graph without labels for layout calculation (it caused errors)
       G_layout = self.G.copy()
       nx.set_node_attributes(G_layout, '', 'label')
       try:
         pos = nx.nx_agraph.graphviz_layout(G_layout, prog="twopi")
 
-        print('centering positions around zero zero')      
+        print('Centering positions around (0,0)')      
         xs = [coord[0] for coord in pos.values()]
         ys = [coord[1] for coord in pos.values()]
         center_x = (max(xs) + min(xs)) / 2
@@ -394,13 +402,13 @@ class Analytics:
         }
       """)
 
-      print('converting networkx to pyvis')
+      print('Converting networkx to pyvis')
       net.from_nx(self.G)
 
-      print('calculating node sizes')
+      print('Calculating node sizes')
       sizes = self.adjust_node_sizes([node.get('size', 1) for node in net.nodes])
 
-      print('converting size and colors and titles to pyvis')
+      print('Converting size and colors and titles to pyvis')
       for i, node in enumerate(net.nodes):
         node['size'] = int(sizes[i])  # Scale down for pyvis
         node['color'] = self.G.nodes[node['id']].get('color', '#ffffff')
@@ -413,6 +421,7 @@ class Analytics:
           node['x'] = pos[node_id][0] * 40 # was 25 then 50
           node['y'] = pos[node_id][1] * 40 # was 25 then 50
       
+      print("Writing network graph to html")
       net.write_html(f"{self.pathname}/network_graph.html")
 
 
@@ -447,6 +456,7 @@ class Analytics:
       self.time_fig.canvas.flush_events()
       plt.pause(0.1)
     if end:
+      print("Saving time plot")
       self.time_fig.tight_layout()  # Adjust layout to prevent label cutoff
       self.time_fig.savefig(f"{self.pathname}/time_plot.png", dpi=300, bbox_inches='tight')
 
@@ -481,6 +491,7 @@ class Analytics:
       self.day_fig.canvas.flush_events()
       plt.pause(0.1)
     if end:
+      print("Saving day plot")
       self.day_fig.tight_layout()
       self.day_fig.savefig(f"{self.pathname}/day_plot.png", dpi=300, bbox_inches='tight')
 
@@ -496,15 +507,16 @@ class Analytics:
     self.cloud_image = self.cloud_ax.imshow(np.zeros((10, 10)), cmap='viridis')
     self.cloud_ax.axis('off')
 
-    # Load and convert Notion logo to mask from URL
-    import requests
-    from PIL import Image
-    from io import BytesIO
-    
-    response = requests.get('https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png')
-    notion_logo = np.array(Image.open(BytesIO(response.content)).convert("RGB"))
-    mask = notion_logo[:, :, 0]
-    mask = 255 - mask
+    def make_notion_logo_mask():
+      import requests
+      from PIL import Image
+      from io import BytesIO
+      
+      response = requests.get('https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png')
+      notion_logo = np.array(Image.open(BytesIO(response.content)).convert("RGB"))
+      mask = notion_logo[:, :, 0]
+      mask = 255 - mask
+      return mask
 
     self.word_cloud = WordCloud(
       width=1500,
@@ -513,7 +525,7 @@ class Analytics:
       max_words=400,
       prefer_horizontal=0.9,
       scale=2,
-      # mask=mask,
+      mask=make_notion_logo_mask() if self.word_cloud_as_notion_logo else None,
       colormap=plt.matplotlib.colors.ListedColormap(list(self.type_colors.values()))
     )
 
@@ -530,6 +542,7 @@ class Analytics:
       self.cloud_fig.canvas.flush_events()
       plt.pause(0.1)
     if end:
+      print("Saving word cloud")
       self.cloud_fig.tight_layout()
       self.cloud_fig.savefig(f"{self.pathname}/word_cloud.png", dpi=300, bbox_inches='tight', facecolor='black')
 
@@ -571,6 +584,7 @@ class Analytics:
       self.block_type_fig.canvas.flush_events()
       plt.pause(0.1)
     if end:
+      print("Saving block type plot")
       self.block_type_fig.tight_layout()
       self.block_type_fig.savefig(f"{self.pathname}/block_type_plot.png", dpi=300, bbox_inches='tight')
 

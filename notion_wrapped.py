@@ -13,6 +13,7 @@ parser.add_argument('--max-children', type=int, help='Maximum number of children
 parser.add_argument('--max-blocks', type=int, help='Maximum total blocks to process')
 parser.add_argument('--cache-mode', choices=['live', 'cached', 'save'], default='live', 
                   help='Cache mode: live (no cache), cached (use cache), or save (save to cache)')
+parser.add_argument('--word-cloud-as-notion-logo', action='store_true', help='Use Notion logo as word cloud mask')
 
 args = parser.parse_args()
 
