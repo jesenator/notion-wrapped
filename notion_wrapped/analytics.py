@@ -31,8 +31,9 @@ from . import utils
 ######################################################################
 
 class Analytics:
-  def __init__(self, api_token, show_graphs=False, get_users=True, anonymous_network_graph=False, word_cloud_as_notion_logo=False, pathname="analytics"):
+  def __init__(self, api_token, show_graphs=False, get_users=True, anonymous_network_graph=False, word_cloud_as_notion_logo=False, last_n_years=None, pathname="analytics"):
     self.api_token = api_token
+    self.last_n_years = last_n_years
     self.total_word_count = 0
     self.total_block_count = 0
 
@@ -107,6 +108,19 @@ class Analytics:
 
   def add_block(self, block, block_metadata):
     depth, child_num, block_num, is_main_thread = block_metadata
+    
+    def get_date_time(date_time_str):
+      date_string, time_string = date_time_str.split("T")
+      date = datetime.strptime(date_string, '%Y-%m-%d').date()
+      return date, time_string
+
+    block_created_date, block_created_time = get_date_time(block['created_time'])
+    block_last_edited_date, block_last_edited_time = get_date_time(block['last_edited_time'])
+
+    is_date_too_old = lambda date: date < (datetime.now().date() - timedelta(days=365 * self.last_n_years))
+      
+    if is_date_too_old(block_created_date) and is_date_too_old(block_last_edited_date):
+      return
 
     self.total_block_count +=1
     if block['object'] == "page":
@@ -114,18 +128,20 @@ class Analytics:
     else:
       block_type = block['type']
 
-    block_id = block['id'].replace("-", "")
-    block_date, block_time = block['created_time'].split("T")
+    block_id = self.get_anonymous_id(block['id'].replace("-", ""))
 
-    block_hour = int(block_time.split(":")[0]) - 1
+    block_hour = int(block_created_time.split(":")[0]) - 1
     self.time_array[block_hour] = self.time_array[block_hour] + 1
 
-    block_date = datetime.strptime(block_date, '%Y-%m-%d').date()
-    if block_date.year >= 2019:
-      if block_date in self.day_dict:
-        self.day_dict[block_date] += 1
-      else:
-        self.day_dict[block_date] = 1      
+    def update_day_dict(date):
+      if date.year >= 2019:
+        if date in self.day_dict:
+          self.day_dict[date] += 1
+        else:
+          self.day_dict[date] = 1      
+
+    update_day_dict(block_created_date)
+    update_day_dict(block_last_edited_date)
 
     self.max_recursion_depth = max(self.max_recursion_depth, depth)
 
@@ -168,7 +184,7 @@ class Analytics:
     block_test_sample += "" if len(block_text) <= 35 else "..."
     
     text_info = f"{block_test_sample} + {block_word_count:<3} word{'' if block_word_count == 1 else 's'}" if block_word_count > 0 else ""
-    block_info = f"{(indenter * depth)[:-1]} {block_type:<10.10} - {block_date} - {block_id[:5]} - {text_info}"
+    block_info = f"{(indenter * depth)[:-1]} {block_type:<10.10} - {block_created_date} - {block_id[:5]} - {text_info}"
     
     # Get color for block type and convert to ANSI escape sequence
     color_hex = self.type_colors.get(block_type, "#ffffff")
@@ -192,13 +208,29 @@ class Analytics:
         label = f"type: {block_type}"
             
       node_color = self.type_colors.get(block_type, "#ffffff")  # White for unknown types
-      self.G.add_node(self.get_anonymous_id(block_id), label=label, size=size, color=node_color, type=block_type if not self.anonymous_network_graph else None, level=depth)
+      self.G.add_node(block_id, label=label, size=size, color=node_color, type=block_type if not self.anonymous_network_graph else None, level=depth)
       
       parent_type = block['parent']['type']
       if parent_type != 'workspace':
         parent_id = block['parent'][parent_type].replace("-", "")
         parent_id = self.get_anonymous_id(parent_id)
-        self.G.add_edge(parent_id, self.get_anonymous_id(block_id))
+        self.G.add_edge(parent_id, block_id)
+
+        # Handle links in any block with rich_text
+        if block_type in block and 'rich_text' in block[block_type]:
+          for text in block[block_type]['rich_text']:
+            linked_id = None
+            if text.get('type') == 'mention' and text['mention']['type'] == 'page':
+              linked_id = text['mention']['page']['id'].replace("-", "")
+            elif text.get('href'):
+              href_match = re.search(r'([a-f0-9]{32})', text['href'])
+              if href_match:
+                linked_id = href_match.group(1)
+            
+            if linked_id:
+              linked_id = self.get_anonymous_id(linked_id)
+              if linked_id in self.G:
+                self.G.add_edge(block_id, linked_id, weight=0.5, link=True)
 
         if parent_id in self.G.nodes and 'size' in self.G.nodes[parent_id]:
           previous_size = self.G.nodes[parent_id]['size']
