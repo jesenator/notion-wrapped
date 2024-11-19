@@ -23,7 +23,7 @@ from nltk.corpus import stopwords
 nltk.download('stopwords', quiet=True)
 
 # Local imports
-import utils
+from . import utils
 
 
 ######################################################################

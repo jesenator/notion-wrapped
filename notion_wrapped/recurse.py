@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Lock
 
 from wakepy import keep
-from notion_client import NotionClient
+from .notion_client import NotionClient
 
 
 class NotionRecurser:
