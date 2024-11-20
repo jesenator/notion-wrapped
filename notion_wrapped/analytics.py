@@ -31,7 +31,16 @@ from . import utils
 ######################################################################
 
 class Analytics:
-  def __init__(self, api_token, show_graphs=False, get_users=True, anonymous_network_graph=False, word_cloud_as_notion_logo=False, last_n_years=None, pathname="analytics"):
+  def __init__(self, 
+              api_token, 
+              show_graphs=False, 
+              only_show_pages_in_network_graph=False, 
+              get_users=True, 
+              anonymous_network_graph=False, 
+              word_cloud_as_notion_logo=False, 
+              last_n_years=None, 
+              pathname="analytics"):
+    self.only_show_pages_in_network_graph = only_show_pages_in_network_graph
     self.api_token = api_token
     self.last_n_years = last_n_years
     self.total_word_count = 0
@@ -105,98 +114,44 @@ class Analytics:
 
   def get_anonymous_id(self, id):
     return hashlib.md5(id.encode()).hexdigest() if self.anonymous_network_graph else id
+  
+  def get_date_time(self, date_time_str):
+    date_string, time_string = date_time_str.split("T")
+    date = datetime.strptime(date_string, '%Y-%m-%d').date()
+    return date, time_string
 
-  def add_block(self, block, block_metadata):
-    depth, child_num, block_num, is_main_thread = block_metadata
+  def update_day_dict(self, date):
+    if date and date.year >= 2019:
+      if date in self.day_dict:
+        self.day_dict[date] += 1
+      else:
+        self.day_dict[date] = 1  
     
-    def get_date_time(date_time_str):
-      date_string, time_string = date_time_str.split("T")
-      date = datetime.strptime(date_string, '%Y-%m-%d').date()
-      return date, time_string
-
-    block_created_date, block_created_time = get_date_time(block['created_time'])
-    block_last_edited_date, block_last_edited_time = get_date_time(block['last_edited_time'])
-
-    is_date_too_old = lambda date: date < (datetime.now().date() - timedelta(days=365 * self.last_n_years))
-      
-    if is_date_too_old(block_created_date) and is_date_too_old(block_last_edited_date):
-      return
-
-    self.total_block_count +=1
-    if block['object'] == "page":
-      block_type = self.database_page_title
-    else:
-      block_type = block['type']
-
-    block_id = self.get_anonymous_id(block['id'].replace("-", ""))
-
-    block_hour = int(block_created_time.split(":")[0]) - 1
+  def update_time_array(self, block_time):
+    block_hour = int(block_time.split(":")[0]) - 1
     self.time_array[block_hour] = self.time_array[block_hour] + 1
 
-    def update_day_dict(date):
-      if date.year >= 2019:
-        if date in self.day_dict:
-          self.day_dict[date] += 1
-        else:
-          self.day_dict[date] = 1      
+  def update_user_count(self, user_id, action):
+    if not self.get_users:
+      return
 
-    update_day_dict(block_created_date)
-    update_day_dict(block_last_edited_date)
+    if user_id not in self.users:
+      self.users[user_id] = {"name": utils.get_user_name(user_id, self.api_token), "created_count": 0, "edited_count": 0}
+    self.users[user_id][f"{action}_count"] += 1
 
-    self.max_recursion_depth = max(self.max_recursion_depth, depth)
-
-    def update_user_count(user_id, action):
-      if user_id not in self.users:
-        self.users[user_id] = {"name": utils.get_user_name(user_id, self.api_token), "created_count": 0, "edited_count": 0}
-      self.users[user_id][f"{action}_count"] += 1
-
-    if self.get_users:
-      update_user_count(block['created_by']['id'], 'created')
-      update_user_count(block['last_edited_by']['id'], 'edited')
-
-    # get words/word count
-    block_text = utils.get_words(block, just_title=True)
-    block_word_count = utils.count_words_in_text(block_text)
-    self.total_word_count += block_word_count
-
-    #update word counts for word cloud
-    # Split on whitespace and common punctuation
-    for word in re.split(r'[\s,;:()\[\]{}|/<>+=_"\'\`]+', block_text.lower()):
-      # Clean any remaining punctuation at start/end
-      word = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', word)
-      # Skip empty strings, stopwords, and common punctuation
+  def update_word_counts(self, block_text):
+    for word in re.split(r'[\s,;:()\[\]{}|/<>+=_"\'\`]+', block_text.lower()): # Split on whitespace and common punctuation
+      word = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', word) # Clean any remaining punctuation at start/end      
       if (word and 
           word not in self.stop_words and 
           not re.match(r'^[-—/]+$', word) and
-          word not in ['like', 'also', 'really']):
+          word not in ['like', 'also', 'really']): # Skip empty strings, stopwords, and common punctuation
         if word not in self.word_counts:
           self.word_counts[word] = 0
         self.word_counts[word] += 1
 
-    # update block type counter
-    if block_type not in self.block_type_count:
-      self.block_type_count[block_type] = 0
-    self.block_type_count[block_type] += 1
-
-    # output abreviated block info to terminal
-    indenter = "==" if "_page" in block_type else "- "
-    block_test_sample = block_text[:35].replace("\n", "\\n")
-    block_test_sample += "" if len(block_text) <= 35 else "..."
-    
-    text_info = f"{block_test_sample} + {block_word_count:<3} word{'' if block_word_count == 1 else 's'}" if block_word_count > 0 else ""
-    block_info = f"{(indenter * depth)[:-1]} {block_type:<10.10} - {block_created_date} - {block_id[:5]} - {text_info}"
-    
-    # Get color for block type and convert to ANSI escape sequence
-    color_hex = self.type_colors.get(block_type, "#ffffff")
-    r, g, b = tuple(int(color_hex[i:i+2], 16) for i in (1, 3, 5))    
-    tqdm.write(f"\033[38;2;{r};{g};{b}m{block_info}\033[0m")
-    self.log_file.write(block_info + "\n")
-    
-    self.progress_bar.n = self.total_block_count
-    self.progress_bar.update(1)
-
-    only_show_pages = False
-    if not only_show_pages or block_type in [self.database_page_title, "child_page"]:
+  def update_network_counts(self, block, block_id, block_type, block_text, depth):
+    if not self.only_show_pages_in_network_graph or block_type in [self.database_page_title, "child_page"]:
       size = max(1, len(block_text))
       if self.anonymous_network_graph:
         label = " "
@@ -208,7 +163,7 @@ class Analytics:
         label = f"type: {block_type}"
             
       node_color = self.type_colors.get(block_type, "#ffffff")  # White for unknown types
-      self.G.add_node(block_id, label=label, size=size, color=node_color, type=block_type if not self.anonymous_network_graph else None, level=depth)
+      self.G.add_node(block_id, label=label, size=size, color=node_color, type=block_type if not self.anonymous_network_graph else None, level=depth, shape=("star" if block_type in [self.database_page_title, "child_database", "child_page"] else "dot"))
       
       parent_type = block['parent']['type']
       if parent_type != 'workspace':
@@ -217,7 +172,7 @@ class Analytics:
         self.G.add_edge(parent_id, block_id)
 
         # Handle links in any block with rich_text
-        if block_type in block and 'rich_text' in block[block_type]:
+        if block_type != "to_remove" and block_type in block and 'rich_text' in block[block_type]:
           for text in block[block_type]['rich_text']:
             linked_id = None
             if text.get('type') == 'mention' and text['mention']['type'] == 'page':
@@ -239,6 +194,67 @@ class Analytics:
         else:
           self.G.add_node(parent_id, size=size, label="unknown", color="#ffffff", type="unknown", level=depth)
 
+
+  def add_block(self, block, block_metadata):
+    depth, child_num, block_num, is_main_thread = block_metadata
+    
+    # get useful vars for this function
+    block_id = self.get_anonymous_id(block['id'].replace("-", ""))
+    block_type = self.database_page_title if block['object'] == "page" else block['type']
+
+    block_text = utils.get_words(block, just_title=True)
+    block_word_count = utils.count_words_in_text(block_text)
+
+    block_created_date, block_created_time = self.get_date_time(block['created_time'])
+    block_last_edited_date, block_last_edited_time = self.get_date_time(block['last_edited_time'])
+
+    is_date_too_old = lambda date: date < (datetime.now().date() - timedelta(days=365 * self.last_n_years))
+
+    # make sure it is this year's notion wrapped relevant
+    if is_date_too_old(block_created_date) and is_date_too_old(block_last_edited_date):
+      self.update_network_counts(block, block_id, "to_remove", block_text, depth)
+      return
+    elif is_date_too_old(block_created_date):
+      block_created_date = None
+
+    # one off updates
+    self.total_block_count +=1
+    self.total_word_count += block_word_count
+    self.max_recursion_depth = max(self.max_recursion_depth, depth)
+    
+    self.progress_bar.n = self.total_block_count
+    self.progress_bar.update(1)
+  
+    if block_type not in self.block_type_count:
+      self.block_type_count[block_type] = 0
+    self.block_type_count[block_type] += 1
+
+    # update data for plots
+    self.update_time_array(block_created_time)
+    self.update_time_array(block_last_edited_time)
+
+    self.update_day_dict(block_created_date)
+    self.update_day_dict(block_last_edited_date)
+
+    self.update_user_count(block['created_by']['id'], 'created')
+    self.update_user_count(block['last_edited_by']['id'], 'edited')
+
+    self.update_word_counts(block_text)
+    self.update_network_counts(block, block_id, block_type, block_text, depth)
+
+    # output abreviated block info to terminal
+    indenter = "==" if "_page" in block_type else "- "
+    block_test_sample = block_text[:35].replace("\n", "\\n")
+    block_test_sample += "" if len(block_text) <= 35 else "..."
+    
+    text_info = f"{block_test_sample} + {block_word_count:<3} word{'' if block_word_count == 1 else 's'}" if block_word_count > 0 else ""
+    block_info = f"{(indenter * depth)[:-1]} {block_type:<10.10} - {block_created_date} - {block_id[:5]} - {text_info}"
+    
+    # Get color for block type and convert to ANSI escape sequence
+    color_hex = self.type_colors.get(block_type, "#ffffff")
+    r, g, b = tuple(int(color_hex[i:i+2], 16) for i in (1, 3, 5))    
+    tqdm.write(f"\033[38;2;{r};{g};{b}m{block_info}\033[0m")
+    self.log_file.write(block_info + "\n")
 
     current_time = time.time()
     if current_time - self.last_file_update < 5:
@@ -274,9 +290,9 @@ class Analytics:
       complete_day_dict = self.get_complete_day_dict()
       daily_blocks = list(complete_day_dict.values())
       
-      self.analytics_file.write(f"\n\nAverage blocks created per day: {sum(daily_blocks) / len(daily_blocks):.2f}")
-      self.analytics_file.write(f"\nMedian blocks created per day: {np.median(daily_blocks):.2f}")
-      self.analytics_file.write(f"\nDays with zero blocks created: {sum(1 for blocks in daily_blocks if blocks == 0)}")
+      self.analytics_file.write(f"\n\nAverage blocks created or edited per day: {sum(daily_blocks) / len(daily_blocks):.2f}")
+      self.analytics_file.write(f"\nMedian blocks created or edited per day: {np.median(daily_blocks):.2f}")
+      self.analytics_file.write(f"\nDays with zero blocks created or edited: {sum(1 for blocks in daily_blocks if blocks == 0)}")
       self.analytics_file.write(f"\nTotal number of days: {len(daily_blocks)}")
     
     self.analytics_file.write(f"\n\nProgram Execution time: {self.execution_time()}")
@@ -340,7 +356,7 @@ class Analytics:
       print("Processing network graph")
       
       # Find nodes to remove (non-child_page nodes)
-      types_to_prune = ['column', 'column_list', 'divider']
+      types_to_prune = ['column', 'column_list', 'divider', "to_remove"]
       types_to_not_prune = ['child_page', 'child_database', self.database_page_title]
 
       print("Removing non-child_page nodes")
@@ -463,11 +479,17 @@ class Analytics:
     if self.show_graphs:
       plt.ion()
     self.time_fig, self.time_ax = plt.subplots()
-    self.time_bars = self.time_ax.bar(range(24), self.time_array)
+    
+    # Get a list of colors from type_colors, cycling if needed to reach 24 colors
+    colors = list(self.type_colors.values())
+    colors = colors * (24 // len(colors) + 1)  # Repeat colors if needed
+    colors = colors[:24]  # Take exactly 24 colors
+    
+    self.time_bars = self.time_ax.bar(range(24), self.time_array, color=colors)
     self.time_ax.set_ylim(0, 1)
     self.time_ax.set_xlabel('Hour of Day')
-    self.time_ax.set_ylabel('Average blocks created per hour')
-    self.time_ax.set_title('Average blocks created per hour of day')
+    self.time_ax.set_ylabel('Number of Blocks')
+    self.time_ax.set_title('Average blocks created or edited per hour of day')
     
     self.time_ax.set_xticks(range(24))
     self.time_ax.set_xticklabels([f'{i:02d}' for i in range(24)], rotation=45)
@@ -505,7 +527,7 @@ class Analytics:
     self.day_line, = self.day_ax.plot(self.dates, self.values, 'o-')
     self.day_ax.set_xlabel('Date')
     self.day_ax.set_ylabel('Number of Blocks')
-    self.day_ax.set_title('Line Graph of Blocks Created Per Day')
+    self.day_ax.set_title('Line Graph of Blocks Created or Edited Per Day')
     self.day_ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
     self.day_fig.autofmt_xdate()  # Rotate date labels
     # self.day_ax.set_xticklabels(self.dates, rotation=45, ha='right')
@@ -515,7 +537,7 @@ class Analytics:
     self.dates = sorted(self.day_dict.keys())
     self.values = [self.day_dict[date] for date in self.dates]
     self.day_line.set_data(self.dates, self.values)
-    self.day_ax.set_ylim(0, max(self.values) * 1.2 if self.values else 1)  # Set y-axis limits
+    self.day_ax.set_ylim(0, min(max(self.values) * 1.2, 700))  # Set y-axis limits
     self.day_ax.relim()
     self.day_ax.autoscale_view()
     if self.show_graphs:
