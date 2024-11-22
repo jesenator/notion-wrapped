@@ -4,6 +4,7 @@ import time
 import hashlib
 from datetime import datetime, timedelta
 import os
+import shutil
 
 # Third-party data/math libraries
 import numpy as np
@@ -24,6 +25,8 @@ nltk.download('stopwords', quiet=True)
 
 # Local imports
 from . import utils
+from .utils import database_page_title
+from .notion_client import NotionClient
 
 
 ######################################################################
@@ -36,10 +39,14 @@ class Analytics:
               show_graphs=False, 
               only_show_pages_in_network_graph=False, 
               get_users=True, 
-              anonymous_network_graph=False, 
+              anonymous_network_graph=False,
+              show_filter_menu=False,
+              network_dimensions=("1300px", "100%"),
+              network_graph_backlinks=False,
               word_cloud_as_notion_logo=False, 
-              last_n_years=None, 
+              last_n_years=None,
               pathname="analytics"):
+
     self.only_show_pages_in_network_graph = only_show_pages_in_network_graph
     self.api_token = api_token
     self.last_n_years = last_n_years
@@ -53,8 +60,7 @@ class Analytics:
     self.users = {}
 
     self.pathname = pathname
-    self.database_page_title = "database_page"
-    self.type_colors = {"paragraph": "#4287f5", "bulleted_list_item": "#42f54b", "numbered_list_item": "#f54242", "to_do": "#f5a442", "heading_3": "#42f5f5", self.database_page_title: "#f542f5", "divider": "#8c8c8c", "image": "#f5e642", "toggle": "#9b42f5", "column": "#f58c42", "heading_2": "#42f5a4", "column_list": "#a4f542", "callout": "#f54287", "child_page": "#42a4f5", "table_row": "#f5428c", "file": "#8cf542", "code": "#424242", "heading_1": "#f5f542", "child_database": "#42f58c", "quote": "#b342f5", "link_to_page": "#f5b342", "synced_block": "#4242f5", "video": "#f54242", "bookmark": "#42f5b3", "table": "#f542b3", "unsupported": "#666666", "equation": "#b3f542", "embed": "#f58742", "table_of_contents": "#4287f5", "link_preview": "#42f587", "pdf": "#f54287", "audio": "#87f542"}
+    self.type_colors = {"paragraph": "#4287f5", "bulleted_list_item": "#42f54b", "numbered_list_item": "#f54242", "to_do": "#f5a442", "heading_3": "#42f5f5", database_page_title: "#f542f5", "divider": "#8c8c8c", "image": "#f5e642", "toggle": "#9b42f5", "column": "#f58c42", "heading_2": "#42f5a4", "column_list": "#a4f542", "callout": "#f54287", "child_page": "#42a4f5", "table_row": "#f5428c", "file": "#8cf542", "code": "#424242", "heading_1": "#f5f542", "child_database": "#42f58c", "quote": "#b342f5", "link_to_page": "#f5b342", "synced_block": "#4242f5", "video": "#f54242", "bookmark": "#42f5b3", "table": "#f542b3", "unsupported": "#666666", "equation": "#b3f542", "embed": "#f58742", "table_of_contents": "#4287f5", "link_preview": "#42f587", "pdf": "#f54287", "audio": "#87f542"}
 
     os.makedirs(self.pathname, exist_ok=True)
     self.analytics_file = open(f"{self.pathname}/analytics.txt", "w+")
@@ -63,7 +69,12 @@ class Analytics:
 
     self.show_graphs = show_graphs
     self.anonymous_network_graph = anonymous_network_graph     
+    self.show_filter_menu = show_filter_menu # show filter menu disables graphviz layout because when you filter with node x, y positions set it resets to those positions which is annoying
+    self.network_dimensions = network_dimensions
+    self.network_graph_backlinks = network_graph_backlinks
     self.word_cloud_as_notion_logo = word_cloud_as_notion_logo
+
+    self.client = NotionClient(self.api_token)
 
     if not self.show_graphs:
       plt.ioff()  # Turn off interactive mode if not showing graphs
@@ -136,7 +147,7 @@ class Analytics:
       return
 
     if user_id not in self.users:
-      self.users[user_id] = {"name": utils.get_user_name(user_id, self.api_token), "created_count": 0, "edited_count": 0}
+      self.users[user_id] = {"name": self.client.get_user_name(user_id), "created_count": 0, "edited_count": 0}
     self.users[user_id][f"{action}_count"] += 1
 
   def update_word_counts(self, block_text):
@@ -151,7 +162,7 @@ class Analytics:
         self.word_counts[word] += 1
 
   def update_network_counts(self, block, block_id, block_type, block_text, depth):
-    if not self.only_show_pages_in_network_graph or block_type in [self.database_page_title, "child_page"]:
+    if not self.only_show_pages_in_network_graph or block_type in [database_page_title, "child_page"]:
       size = max(1, len(block_text))
       if self.anonymous_network_graph:
         label = " "
@@ -163,7 +174,7 @@ class Analytics:
         label = f"type: {block_type}"
             
       node_color = self.type_colors.get(block_type, "#ffffff")  # White for unknown types
-      self.G.add_node(block_id, label=label, size=size, color=node_color, type=block_type if not self.anonymous_network_graph else None, level=depth, shape=("star" if block_type in [self.database_page_title, "child_database", "child_page"] else "dot"))
+      self.G.add_node(block_id, label=label, size=size, color=node_color, type=block_type if not self.anonymous_network_graph else None, level=depth, shape=("star" if block_type in [database_page_title, "child_database", "child_page"] else "dot"))
       
       parent_type = block['parent']['type']
       if parent_type != 'workspace':
@@ -172,7 +183,7 @@ class Analytics:
         self.G.add_edge(parent_id, block_id)
 
         # Handle links in any block with rich_text
-        if block_type != "to_remove" and block_type in block and 'rich_text' in block[block_type]:
+        if block_type != "to_remove" and self.network_graph_backlinks and block_type in block and 'rich_text' in block[block_type]:
           for text in block[block_type]['rich_text']:
             linked_id = None
             if text.get('type') == 'mention' and text['mention']['type'] == 'page':
@@ -200,7 +211,7 @@ class Analytics:
     
     # get useful vars for this function
     block_id = self.get_anonymous_id(block['id'].replace("-", ""))
-    block_type = self.database_page_title if block['object'] == "page" else block['type']
+    block_type = database_page_title if block['object'] == "page" else block['type']
 
     block_text = utils.get_words(block, just_title=True)
     block_word_count = utils.count_words_in_text(block_text)
@@ -208,7 +219,7 @@ class Analytics:
     block_created_date, block_created_time = self.get_date_time(block['created_time'])
     block_last_edited_date, block_last_edited_time = self.get_date_time(block['last_edited_time'])
 
-    is_date_too_old = lambda date: date < (datetime.now().date() - timedelta(days=365 * self.last_n_years))
+    is_date_too_old = lambda date: self.last_n_years and date < (datetime.now().date() - timedelta(days=365 * self.last_n_years))
 
     # make sure it is this year's notion wrapped relevant
     if is_date_too_old(block_created_date) and is_date_too_old(block_last_edited_date):
@@ -353,11 +364,11 @@ class Analytics:
 
   def update_network_graph(self, end=False):
     if end:
-      print("Processing network graph")
+      print("\nProcessing network graph")
       
       # Find nodes to remove (non-child_page nodes)
       types_to_prune = ['column', 'column_list', 'divider', "to_remove"]
-      types_to_not_prune = ['child_page', 'child_database', self.database_page_title]
+      types_to_not_prune = ['child_page', 'child_database', database_page_title]
 
       print("Removing non-child_page nodes")
       nodes_to_remove = []
@@ -384,26 +395,26 @@ class Analytics:
         self.G.remove_node(node)
 
       print('Converting networkx to pyvis')
-      dimensions = ("1300px", "100%") # if self.anonymous_network_graph else ("1920px", "1920px")
-      net = Network(height=dimensions[0], width=dimensions[1], bgcolor="black", font_color="white")
-      # , select_menu=True, filter_menu=True
+      net = Network(width=self.network_dimensions[0], height=self.network_dimensions[1], bgcolor="black", font_color="white", filter_menu=self.show_filter_menu)
       print('Calculating node positions')
-      # Create a copy of the graph without labels for layout calculation (it caused errors)
-      G_layout = self.G.copy()
-      nx.set_node_attributes(G_layout, '', 'label')
-      try:
-        pos = nx.nx_agraph.graphviz_layout(G_layout, prog="twopi")
 
-        print('Centering positions around (0,0)')      
-        xs = [coord[0] for coord in pos.values()]
-        ys = [coord[1] for coord in pos.values()]
-        center_x = (max(xs) + min(xs)) / 2
-        center_y = (max(ys) + min(ys)) / 2
+      pos = {}
+      if not self.show_filter_menu:
+        # Create a copy of the graph without labels for layout calculation (it caused errors)
+        G_layout = self.G.copy()
+        nx.set_node_attributes(G_layout, '', 'label')
+        try:
+          pos = nx.nx_agraph.graphviz_layout(G_layout, prog="twopi")
 
-        pos = {node: (x - center_x, y - center_y) for node, (x, y) in pos.items()}
-      except Exception as e:
-        print(f"WARNING: Graphviz not installed, falling back to default layout. Please install graphviz to get a better inital layout (makes the most difference for larger graphs).")
-        pos = {}
+          print('Centering positions around (0,0)')      
+          xs = [coord[0] for coord in pos.values()]
+          ys = [coord[1] for coord in pos.values()]
+          center_x = (max(xs) + min(xs)) / 2
+          center_y = (max(ys) + min(ys)) / 2
+
+          pos = {node: (x - center_x, y - center_y) for node, (x, y) in pos.items()}
+        except Exception as e:
+          print(f"WARNING: Graphviz not installed, falling back to default layout. Please install graphviz to get a better inital layout (makes the most difference for larger graphs).")
 
       # Configure physics options
       # 0.5 theta is good for smaller graphs, 1 is good for larger graphs (I think?)
@@ -470,7 +481,8 @@ class Analytics:
           node['y'] = pos[node_id][1] * 40 # was 25 then 50
       
       print("Writing network graph to html")
-      net.write_html(f"{self.pathname}/network_graph.html")
+      net.write_html("temp_network_graph.html") # the pyvis library doesn't let you save the file in a different directory
+      shutil.move("temp_network_graph.html", f"{self.pathname}/network_graph.html")
 
 
   ########################### time plot ###########################
