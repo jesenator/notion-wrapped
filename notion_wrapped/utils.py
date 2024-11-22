@@ -4,83 +4,6 @@ import re
 
 database_page_title = "database_page"
 
-## This function isn't used for the Notion wrapped program, but can be used with recurse.py for easy interaction with the Notion API to update database properties
-def update_property(block, property_name, property_value, api_token):
-  def update_block_property(block, property_name, property_value):
-    if block['object'] == "page":
-      block_type = database_page_title
-    else:
-      block_type = block['type']
-
-    if block_type != database_page_title:
-      return None
-    
-    if property_name == "icon":
-      payload = {
-        "icon": {
-          "type": "emoji",
-          "emoji": property_value
-        }
-      }
-      return payload
-
-    property_type = block["properties"][property_name]["type"]
-    if property_type == "files":
-      payload = {
-        "properties": {
-          property_name: {
-            "files": [
-              {
-                "type": "external",
-                "name": "file or url",
-                "external": {
-                  "url": property_value
-                }
-              }
-            ]
-          }
-        }
-      }
-    elif property_type == "rich_text":
-      payload = {
-        "properties": {
-          property_name: {
-            "rich_text": [
-              {
-                "type": "text",
-                "text": {
-                  "content": property_value
-                }
-              }
-            ]
-          }
-        }
-      }
-    elif property_type == "number":
-      payload = {
-        "properties": {
-          property_name: {
-            "number": int(property_value.replace(',', ''))
-          }
-        }
-      }
-
-    return payload
-    
-
-  page_id = block["id"]
-  url = f"https://api.notion.com/v1/pages/{page_id}"
-  headers = {
-    "Authorization": f"Bearer {api_token}",
-    "Content-Type": "application/json",
-    "Notion-Version": "2022-06-28"
-  }
-  payload = update_block_property(block, property_name, property_value)
-  if payload:
-    response = requests.patch(url, headers=headers, json=payload)
-    return response.status_code == 200
-  return False
-
 
 def get_words(block, just_title=False, just_property=None):
   if block['object'] == "page":
@@ -125,18 +48,6 @@ def get_words(block, just_title=False, just_property=None):
 
 def print_json(self, json_string):
   print(json.dumps(json_string, indent=4))
-      
-
-def get_user_name(user_id, api_token):
-  url = f"https://api.notion.com/v1/users/{user_id}"
-  headers = {
-    "Authorization": f"Bearer {api_token}",
-    "Content-Type": "application/json",
-    "Notion-Version": "2022-06-28"
-  }
-  response = requests.get(url, headers=headers)
-  response_json = response.json()
-  return response_json.get('name', 'N/A')
 
 def count_words_in_text(text):
   words = re.findall(r'\w+', text.lower())
