@@ -36,7 +36,7 @@ class Analytics:
               get_users=True, 
               anonymous_network_graph=False,
               show_filter_menu=False,
-              network_dimensions=("1300px", "100%"),
+              network_dimensions=("100%", "1300px"),
               network_graph_backlinks=False,
               word_cloud_as_notion_logo=False, 
               last_n_years=None,
@@ -198,7 +198,7 @@ class Analytics:
           new_size = previous_size + size
           self.G.add_node(parent_id, size=new_size)
         else:
-          self.G.add_node(parent_id, size=size, label="unknown", color="#ffffff", type="unknown", level=depth)
+          self.G.add_node(parent_id, size=size, label="unknown" if not self.anonymous_network_graph else " ", color="#ffffff", type="unknown", level=depth)
 
 
   def add_block(self, block, block_metadata):
@@ -288,8 +288,15 @@ class Analytics:
     self.analytics_file.write(f"\n\nTotal Block Count: {self.total_block_count}")
     self.analytics_file.write(f"\nTotal Word Count: {self.total_word_count}")
     self.analytics_file.write(f"\nMax Recursion Depth: {self.max_recursion_depth}")
-    words_per_min = 38
-    self.analytics_file.write(f"\n\nNotion Time Estimate (hours): {int((self.total_block_count * .1 + self.total_word_count / words_per_min) / 60)}")
+
+    # Calculate time estimates for each component
+    block_time = self.total_block_count * (10 / 60) # 10 minutes per block
+    word_time = self.total_word_count / 38  # 38 words per minute
+    page_time = (self.block_type_count.get('child_page', 0) + self.block_type_count.get('child_database', 0)) * 10 # 10 minutes per page
+    database_time = self.block_type_count.get('child_database', 0) * 60 # 60 minutes per database
+
+    time_estimate_minutes = block_time + word_time + page_time + database_time
+    self.analytics_file.write(f"\n\nNotion Total Time Estimate (hours): {int(time_estimate_minutes / 60)}")
     
     # Add daily statistics
     if self.day_dict:
