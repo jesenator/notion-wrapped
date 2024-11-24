@@ -46,14 +46,14 @@ def get_words(block, just_title=False, just_property=None):
   return ""
 
 
-def print_json(self, json_string):
+def print_json(json_string):
   print(json.dumps(json_string, indent=4))
 
 def count_words_in_text(text):
   words = re.findall(r'\w+', text.lower())
   return len(words)
 
-def extract_notion_id(self, url):
+def extract_notion_id( url):
   pattern = r'[a-f0-9]{32}'
   match = re.search(pattern, url)
   return match.group(0) if match else None
