@@ -16,7 +16,6 @@ class NotionRecurser:
 
     self.max_workers = max_workers
     self.current_worker_count = 1
-    self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
     self.cache_file = Path(cache_file)
     self.blocks_cache = []
@@ -77,6 +76,7 @@ class NotionRecurser:
           cache_fp.close()
       else: # cache_mode == 'live':
         try:
+          self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
           return self.recurse(parent_block, 0, 0, is_main_thread=True, **kwargs)
         finally:
           self.executor.shutdown(wait=True)
