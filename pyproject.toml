@@ -1,10 +1,23 @@
-from setuptools import setup, find_packages
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-setup(
-  name="notion-wrapped",
-  version="0.1.0",
-  packages=find_packages(),
-  install_requires=[
+[project]
+name = "notion-wrapped"
+version = "0.1.0"
+authors = [
+  { name="Jesse Gilbert", email="jessegilbert6902@gmail.com" },
+]
+description = "A tool to recursively process your Notion workspace to produce plots and analytics"
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
     "asttokens==2.4.1",
     "certifi==2024.8.30",
     "charset-normalizer==3.4.0",
@@ -48,17 +61,10 @@ setup(
     "wakepy==0.10.1",
     "wcwidth==0.2.13",
     "wordcloud==1.9.4",
-  ],
-  python_requires=">=3.6",
-  author="Jesse Gilbert",
-  author_email="jessegilbert6902@gmail.com",
-  description="A tool to recursively process your Notion workspace to produce plots and analytics",
-  long_description=open("README.md").read(),
-  long_description_content_type="text/markdown",
-  url="https://github.com/jesenator/notion-wrapped",
-  classifiers=[
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-  ],
-)
+]
+
+[project.urls]
+"Homepage" = "https://github.com/jesenator/notion-wrapped"
+
+[project.scripts]
+notion-wrapped = "notion_wrapped.notion_wrapped:main" 
