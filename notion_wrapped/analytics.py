@@ -28,11 +28,6 @@ from . import utils
 from .utils import database_page_title
 from .notion_client import NotionClient
 
-
-######################################################################
-# WHEN I AM DONE: REMOVE API KEY CONNECTION FROM NOTION FOR SECURITY #
-######################################################################
-
 class Analytics:
   def __init__(self, 
               api_token, 
