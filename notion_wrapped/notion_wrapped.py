@@ -47,6 +47,8 @@ def main():
     version=f'notion-wrapped {__import__("notion_wrapped").__version__}')
 
   args = parser.parse_args()
+  if args.cache_mode == 'cached':
+    print("Using cached data from last time you ran this script with cache mode save. This disregards the current page_ids argument.")
 
   try:
     tqdm.write("\033[91m" + "=" * 40)
