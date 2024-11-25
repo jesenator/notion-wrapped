@@ -296,7 +296,7 @@ class Analytics:
     database_time = self.block_type_count.get('child_database', 0) * 60 # 60 minutes per database
 
     time_estimate_minutes = block_time + word_time + page_time + database_time
-    self.analytics_file.write(f"\n\nNotion Total Time Estimate (hours): {int(time_estimate_minutes / 60)}")
+    self.analytics_file.write(f"\n\nNotion Total Time Estimate (hours / days): {int(time_estimate_minutes / 60)} / {int(time_estimate_minutes / 60 / 24)}")
     
     # Add daily statistics
     if self.day_dict:
@@ -306,7 +306,7 @@ class Analytics:
       self.analytics_file.write(f"\n\nAverage blocks created or edited per day: {sum(daily_blocks) / len(daily_blocks):.2f}")
       self.analytics_file.write(f"\nMedian blocks created or edited per day: {np.median(daily_blocks):.2f}")
       self.analytics_file.write(f"\nDays with zero blocks created or edited: {sum(1 for blocks in daily_blocks if blocks == 0)}")
-      self.analytics_file.write(f"\nTotal number of days: {len(daily_blocks)}")
+      self.analytics_file.write(f"\nTotal range of days using Notion: {len(daily_blocks)}")
     
     self.analytics_file.write(f"\n\nProgram Execution time: {self.execution_time()}")
 
@@ -620,7 +620,7 @@ class Analytics:
     self.block_type_count = {}
     if self.show_graphs:
       plt.ion()
-    self.block_type_fig, self.block_type_ax = plt.subplots(figsize=(16, 6))
+    self.block_type_fig, self.block_type_ax = plt.subplots(figsize=(32, 5))
     self.block_type_ax.set_title('Block Type Count')
     self.block_type_ax.set_xlabel('Block Type')
     self.block_type_ax.set_ylabel('Count')

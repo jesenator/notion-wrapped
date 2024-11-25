@@ -80,6 +80,9 @@ def main():
         cache_mode=args.cache_mode
       )
 
+      if args.cache_mode == 'cached':
+        break
+
     analytics.end_of_recursion()
 
     tqdm.write(f"\n\n\033[95mDone! Open the {analytics.pathname} folder to see the results!\033[0m")
