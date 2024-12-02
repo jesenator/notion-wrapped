@@ -45,6 +45,12 @@ def get_words(block, just_title=False, just_property=None):
 
   return ""
 
+def property_is_set(block, property_name):
+  current_property = get_words(block, just_property=property_name)
+  if current_property:
+    print(f"{property_name} already set")
+    return True
+  return False
 
 def print_json(json_string):
   print(json.dumps(json_string, indent=4))
