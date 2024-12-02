@@ -5,9 +5,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import count
 from pathlib import Path
 from threading import Lock
+from dataclasses import dataclass, asdict
 
 from wakepy import keep
 from .notion_client import NotionClient
+
+
+@dataclass
+class BlockMetadata:
+  depth: int
+  child_num: int
+  block_num: int
+  is_main_thread: bool
 
 
 class NotionRecurser:
@@ -50,23 +59,25 @@ class NotionRecurser:
           if(kwargs.get('max_depth') and block_data['depth'] > kwargs.get('max_depth')):
             continue
           if kwargs.get('mapping_function'):
-            kwargs.get('mapping_function')(block_data['block'], (block_data['depth'], block_data['child_num'], i, block_data['is_main_thread']))
+            metadata = BlockMetadata(
+              depth=block_data['depth'],
+              child_num=block_data['child_num'],
+              block_num=i, # change to block_data['block_num'] once I recache
+              is_main_thread=block_data['is_main_thread']
+            )
+            kwargs.get('mapping_function')(block_data['block'], metadata)
         
       elif cache_mode == 'save':
         mapping_function = kwargs.pop('mapping_function')
         self.cache_file.write_text('')
         cache_fp = open(self.cache_file, "a")
         
-        def save_block_to_cache(block, block_metadata):
-          depth, child_num, block_num, is_main_thread = block_metadata
+        def save_block_to_cache(block, metadata):
           if mapping_function:
-            mapping_function(block, block_metadata)
+            mapping_function(block, metadata)
           block_data = {
             "block": block,
-            "depth": depth,
-            "child_num": child_num,
-            "block_num": block_num,
-            "is_main_thread": is_main_thread
+            **asdict(metadata)
           }
           cache_fp.write(json.dumps(block_data) + "\n")
 
@@ -89,7 +100,7 @@ class NotionRecurser:
       return reducing_function(parent_block) if reducing_function else None
 
     if mapping_function:
-      mapping_function(parent_block, (depth, child_num, block_num, is_main_thread))
+      mapping_function(parent_block, BlockMetadata(depth, child_num, block_num, is_main_thread))
 
     block_id = parent_block["id"]
     block_object = parent_block['object']

@@ -201,9 +201,7 @@ class Analytics:
           self.G.add_node(parent_id, size=size, label="unknown" if not self.anonymous_network_graph else " ", color="#ffffff", type="unknown", level=depth)
 
 
-  def add_block(self, block, block_metadata):
-    depth, child_num, block_num, is_main_thread = block_metadata
-    
+  def add_block(self, block, metadata):
     # get useful vars for this function
     block_id = self.get_anonymous_id(block['id'].replace("-", ""))
     block_type = database_page_title if block['object'] == "page" else block['type']
@@ -218,7 +216,7 @@ class Analytics:
 
     # make sure it is this year's notion wrapped relevant
     if is_date_too_old(block_created_date) and is_date_too_old(block_last_edited_date):
-      self.update_network_counts(block, block_id, "to_remove", block_text, depth)
+      self.update_network_counts(block, block_id, "to_remove", block_text, metadata.depth)
       return
     elif is_date_too_old(block_created_date):
       block_created_date = None
@@ -226,7 +224,7 @@ class Analytics:
     # one off updates
     self.total_block_count +=1
     self.total_word_count += block_word_count
-    self.max_recursion_depth = max(self.max_recursion_depth, depth)
+    self.max_recursion_depth = max(self.max_recursion_depth, metadata.depth)
     
     self.progress_bar.n = self.total_block_count
     self.progress_bar.update(1)
@@ -246,7 +244,7 @@ class Analytics:
     self.update_user_count(block['last_edited_by']['id'], 'edited')
 
     self.update_word_counts(block_text)
-    self.update_network_counts(block, block_id, block_type, block_text, depth)
+    self.update_network_counts(block, block_id, block_type, block_text, metadata.depth)
 
     # output abreviated block info to terminal
     indenter = "==" if "_page" in block_type else "- "
@@ -254,7 +252,7 @@ class Analytics:
     block_test_sample += "" if len(block_text) <= 35 else "..."
     
     text_info = f"{block_test_sample} + {block_word_count:<3} word{'' if block_word_count == 1 else 's'}" if block_word_count > 0 else ""
-    block_info = f"{(indenter * depth)[:-1]} {block_type:<10.10} - {block_created_date} - {block_id[:5]} - {text_info}"
+    block_info = f"{(indenter * metadata.depth)[:-1]} {block_type:<10.10} - {block_created_date} - {block_id[:5]} - {text_info}"
     
     # Get color for block type and convert to ANSI escape sequence
     color_hex = self.type_colors.get(block_type, "#ffffff")
@@ -268,7 +266,7 @@ class Analytics:
     self.last_file_update = current_time
 
     self.update_file()
-    if self.show_graphs and is_main_thread:   
+    if self.show_graphs and metadata.is_main_thread:   
       self.update_time_plot()
       self.update_day_plot()
       self.update_word_cloud()
