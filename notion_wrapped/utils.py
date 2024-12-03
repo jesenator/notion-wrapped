@@ -36,7 +36,9 @@ def get_words(block, just_title=False, just_property=None):
         if prop_value["type"] == "title":
           return extract_text(prop_value)
       return ""
-    if just_property:
+    if just_property == 'icon':
+      return block["icon"]["emoji"]
+    elif just_property:
       return extract_text(block["properties"].get(just_property))
     return " ".join(extract_text(prop) for prop in block["properties"].values())
 
