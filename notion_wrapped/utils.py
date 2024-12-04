@@ -41,7 +41,7 @@ def get_words(block, just_title=False, just_property=None):
       return ""
     if just_property:
       return extract_text(block["properties"].get(just_property))
-    return " ".join(extract_text(prop) for prop in block["properties"].values())
+    return " ".join(extract_text(prop) for prop in reversed(list(block["properties"].values())))
 
   elif block_type in ['paragraph', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item', 'numbered_list_item', 'to_do', 'toggle', 'quote', 'callout', 'code']:
     return " ".join(text['plain_text'] for text in block[block_type]['rich_text'])
@@ -67,26 +67,10 @@ def extract_notion_id( url):
   match = re.search(pattern, url)
   return match.group(0) if match else None
 
+def create_reducing_function(joining_function, block_reducing_function):
+  def reducing_function(parent_block, child_results=None):
+    return joining_function((child_results or []) + [block_reducing_function(parent_block)])
+  return reducing_function
 
-########### reducer functions ###########
-def add_word_count(parent_block, child_results=None):    
-  words = get_words(parent_block)
-  words_count = count_words_in_text(words)
-  result = sum([*child_results, words_count]) if child_results else words_count
-  return result
-
-def add_text(parent_block, child_results=None):
-  words = get_words(parent_block)
-  child_results.append(words)
-  result = "\n".join(child_results) if child_results else ""
-  return result
-
-## unfinished
-# does this skip the first value?
-def create_reduce_function(joining_function, function_to_reduce, initial_value):
-  def reduce_function(parent_block, child_results=None):
-    return joining_function(child_results + [function_to_reduce(parent_block)]) if child_results else initial_value
-  return reduce_function
-
-# add_text = create_reduce_function(lambda x: "\n".join(x), get_words, "")
-# add_word_count = create_reduce_function(lambda x: sum(x), lambda x: count_words_in_text(get_words(x)), 0)
+add_text = create_reducing_function(lambda x: "\n".join(x), get_words)
+add_word_count = create_reducing_function(sum, lambda x: count_words_in_text(get_words(x)))
