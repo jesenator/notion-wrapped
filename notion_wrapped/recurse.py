@@ -82,25 +82,39 @@ class NotionRecurser:
           cache_fp.write(json.dumps(block_data) + "\n")
 
         try:
-          return self.recurse(parent_block, 0, 0, is_main_thread=True, mapping_function=save_block_to_cache, **kwargs)
+          return self._recurse(parent_block, 0, 0, is_main_thread=True, mapping_function=save_block_to_cache, **kwargs)
         finally:
           cache_fp.close()
       else: # cache_mode == 'live':
         try:
           self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-          return self.recurse(parent_block, 0, 0, is_main_thread=True, **kwargs)
+          return self._recurse(parent_block, 0, 0, is_main_thread=True, **kwargs)
         finally:
           self.executor.shutdown(wait=True)
 
-  def recurse(self, parent_block, depth, child_num, max_depth=None, max_children=None, max_blocks=None, mapping_function=None, reducing_function=None, is_main_thread=False):
+  def _recurse(
+    self,
+    parent_block,
+    depth,
+    child_num,
+    max_depth=None,
+    max_children=None,
+    max_blocks=None,
+    mapping_function=None,
+    reducing_function=lambda parent, children=None: None,
+    is_main_thread=False
+  ):
     with self.block_counter_lock:
       block_num = next(self.block_counter)
 
-    if (max_depth and depth > max_depth) or (max_children and child_num > max_children) or (max_blocks and block_num > max_blocks):
-      return reducing_function(parent_block) if reducing_function else None
+    if (max_children is not None and child_num > max_children) or (max_blocks is not None and block_num > max_blocks):
+      return reducing_function(parent_block)
 
     if mapping_function:
       mapping_function(parent_block, BlockMetadata(depth, child_num, block_num, is_main_thread))
+
+    if max_depth is not None and (depth + 1) > max_depth:
+      return reducing_function(parent_block)
 
     block_id = parent_block["id"]
     block_object = parent_block['object']
@@ -125,12 +139,12 @@ class NotionRecurser:
       futures = []
       for block in blocks:
         if self.current_worker_count < (self.max_workers):
-          future = self.executor.submit(self.recurse, block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, False)
+          future = self.executor.submit(self._recurse, block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, False)
           futures.append(future)
           self.current_worker_count += 1
           future.add_done_callback(lambda f: self.decrease_thread_count())
         else:
-          child_result = self.recurse(block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, is_main_thread)
+          child_result = self._recurse(block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, is_main_thread)
           child_results.append(child_result)
         child_count += 1
 
@@ -142,7 +156,7 @@ class NotionRecurser:
       if not next_cursor:
         block_id = None
   
-    return reducing_function(parent_block, child_results) if reducing_function else None
+    return reducing_function(parent_block, child_results)
 
   def decrease_thread_count(self):
     self.current_worker_count -= 1
