@@ -44,7 +44,7 @@ class NotionRecurser:
   def start_recursion(self, parent_block, cache_mode='live', **kwargs):
     with keep.running():
       if 'reducing_function' in kwargs and self.max_workers > 1:
-        print("Warning: reducing function might not as intended with multiple workers.")
+        print("Warning: reducing function might not work as intended with multiple workers.")
       if cache_mode != 'cached' and not isinstance(parent_block, dict):
         parent_block = self.client.get_block(parent_block)
       
@@ -161,10 +161,12 @@ class NotionRecurser:
   def decrease_thread_count(self):
     self.current_worker_count -= 1
 
-if __name__ == "__main__":
-  # simple example usage
-  block_id = "8f360d9eb53f4129a492a3bf163eb974"
-  notion_recurser = NotionRecurser("NOTION_API_TOKEN", max_workers=10)
-  word_count = notion_recurser.start_recursion(block_id, max_depth=2, reducing_function=notion_recurser.add_word_count)
-  print(word_count)
-  print("done")
+#### simple example usage ####
+
+# from notion_wrapped import NotionRecurser, Analytics, utils, NotionClient
+# block_id = "8f360d9eb53f4129a492a3bf163eb974"
+# notion_recurser = NotionRecurser("NOTION_API_TOKEN", max_workers=10)
+# word_count = notion_recurser.start_recursion(block_id, max_depth=2, 
+# reducing_function=utils.add_word_count)
+# print(word_count)
+# print("done")
