@@ -20,8 +20,21 @@ from wordcloud import WordCloud
 
 # NLP libraries
 import nltk
+import ssl
 from nltk.corpus import stopwords
-nltk.download('stopwords', quiet=True)
+
+def download_nltk_data():
+  try:
+    nltk.download('stopwords', quiet=True)
+  except Exception as e:
+    try:
+      _create_unverified_https_context = ssl._create_unverified_context
+      ssl._create_default_https_context = _create_unverified_https_context
+      nltk.download('stopwords', quiet=True)
+    except Exception as e:
+      print("Warning: Could not download NLTK stopwords. Word cloud may contain common words.")
+      return set(['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i'])
+  return set(stopwords.words('english'))
 
 # Local imports
 from . import utils
@@ -86,6 +99,7 @@ class Analytics:
     self.progress_bar = tqdm(position=1, desc="Recursing", unit="block", leave=True, smoothing=0.05, colour="green") # smoothing 0 is full average, 1 is instant, .3 is deafult
 
     self.last_file_update = 0
+    self.stop_words = download_nltk_data()
 
   def end_of_recursion(self):
     self.update_file()
@@ -564,7 +578,6 @@ class Analytics:
 
   ########################### word cloud ###########################
   def init_word_cloud(self):
-    self.stop_words = set(stopwords.words('english'))
     self.word_counts = {}
     if self.show_graphs:
       plt.ion()
