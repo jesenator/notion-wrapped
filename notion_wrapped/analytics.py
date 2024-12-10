@@ -562,10 +562,29 @@ class Analytics:
     # Update the data for plotting
     self.dates = sorted(self.day_dict.keys())
     self.values = [self.day_dict[date] for date in self.dates]
-    self.day_line.set_data(self.dates, self.values)
-    self.day_ax.set_ylim(0, min(max(self.values) * 1.2, 700))  # Set y-axis limits
-    self.day_ax.relim()
-    self.day_ax.autoscale_view()
+    
+    # Calculate 95th percentile to cap extreme values
+    percentile_95 = np.percentile(self.values, 99)
+    capped_values = [min(v, percentile_95) for v in self.values]
+    
+    # Apply smoothing using rolling average
+    window_size = 7  # 7-day rolling average
+    if len(capped_values) > window_size:
+      smoothed_values = []
+      for i in range(len(capped_values)):
+        start_idx = max(0, i - window_size // 2)
+        end_idx = min(len(capped_values), i + window_size // 2 + 1)
+        smoothed_values.append(sum(capped_values[start_idx:end_idx]) / (end_idx - start_idx))
+    else:
+      smoothed_values = capped_values
+
+    # Plot both raw data and smoothed line
+    self.day_ax.plot(self.dates, capped_values, 'o', alpha=0.3, color='#666666', markersize=3)
+    self.day_ax.plot(self.dates, smoothed_values, '-', color='#4287f5', linewidth=2)
+    
+    self.day_ax.set_ylim(0, min(max(smoothed_values) * 1.2, 10000))
+    self.day_ax.grid(True, alpha=0.2)
+    
     if self.show_graphs:
       self.day_fig.canvas.draw()
       self.day_fig.canvas.flush_events()
