@@ -148,8 +148,9 @@ class Analytics:
         self.day_dict[date] = 1  
     
   def update_time_array(self, block_time):
-    block_hour = int(block_time.split(":")[0]) - 1
-    self.time_array[block_hour] = self.time_array[block_hour] + 1
+    hour, minute = map(int, block_time.split(':')[:2])
+    minute_index = (hour * 60 + minute) % (24 * 60)
+    self.time_array[minute_index] += 1
 
   def update_user_count(self, user_id, action):
     if not self.get_users:
@@ -499,37 +500,57 @@ class Analytics:
       shutil.move("temp_network_graph.html", f"{self.pathname}/network_graph.html")
 
 
+  def smooth_values(self, values, window_size):
+    """Apply rolling average smoothing to a list of values."""
+    if len(values) <= window_size:
+      return values
+    
+    smoothed_values = []
+    for i in range(len(values)):
+      start_idx = max(0, i - window_size // 2)
+      end_idx = min(len(values), i + window_size // 2 + 1)
+      smoothed_values.append(sum(values[start_idx:end_idx]) / (end_idx - start_idx))
+    return smoothed_values
+
   ########################### time plot ###########################
   def init_time_plot(self):
-    self.time_array = np.zeros(24)
+    self.time_array = np.zeros(24 * 60)
     if self.show_graphs:
       plt.ion()
-    self.time_fig, self.time_ax = plt.subplots()
+    self.time_fig, self.time_ax = plt.subplots(figsize=(15, 6))
+
+    self.time_ax.set_xlabel('Time of Day')
+    self.time_ax.set_ylabel('Average Number of Blocks Created or Edited Per Minute')
+    self.time_ax.set_title('Average Blocks Created or Edited by Minute of Day')
     
-    # Get a list of colors from type_colors, cycling if needed to reach 24 colors
-    colors = list(self.type_colors.values())
-    colors = colors * (24 // len(colors) + 1)  # Repeat colors if needed
-    colors = colors[:24]  # Take exactly 24 colors
-    
-    self.time_bars = self.time_ax.bar(range(24), self.time_array, color=colors)
-    self.time_ax.set_ylim(0, 1)
-    self.time_ax.set_xlabel('Hour of Day')
-    self.time_ax.set_ylabel('Number of Blocks')
-    self.time_ax.set_title('Average blocks created or edited per hour of day')
-    
-    self.time_ax.set_xticks(range(24))
-    self.time_ax.set_xticklabels([f'{i:02d}' for i in range(24)], rotation=45)
+    # Set x-axis ticks to show hours
+    hour_ticks = np.arange(0, 24 * 60, 60)
+    self.time_ax.set_xticks(hour_ticks)
+    self.time_ax.set_xticklabels([f'{i%12 or 12} {"AM" if i < 12 else "PM"}' for i in range(24)], rotation=45)
 
   def update_time_plot(self, end=False):
     if not self.day_dict:
       return
-      
+    
     num_days = len(self.get_complete_day_dict())
     normalized_time_array = self.time_array / num_days
+
+    normalized_time_array = np.roll(normalized_time_array, -(50 * 60))
+
+    percentile = np.percentile(normalized_time_array[normalized_time_array > 0], 95 )
+    capped_values = np.where(normalized_time_array > percentile, 0, normalized_time_array)
+    # capped_values = np.minimum(normalized_time_array, percentile)
+    # Apply smoothing using rolling average
+    smoothed_values = self.smooth_values(capped_values, window_size=20)  # 20-minute rolling average
     
-    for bar, height in zip(self.time_bars, normalized_time_array):
-      bar.set_height(height)
-    self.time_ax.set_ylim(0, max(normalized_time_array) * 1.2)
+    # Plot both raw data and smoothed line
+    minutes = np.arange(24 * 60)
+    self.time_ax.plot(minutes, capped_values, 'o', alpha=0.3, color='#666666', markersize=3)
+    self.time_ax.plot(minutes, smoothed_values, '-', color='#4287f5', linewidth=2)
+        
+    self.time_ax.set_xlim(0, 24 * 60)
+    self.time_ax.set_ylim(0, max(smoothed_values) * 1.2)
+    self.time_ax.grid(True, alpha=0.2)
     
     if self.show_graphs:
       self.time_fig.canvas.draw()
@@ -537,7 +558,7 @@ class Analytics:
       plt.pause(0.1)
     if end:
       print("Saving time plot")
-      self.time_fig.tight_layout()  # Adjust layout to prevent label cutoff
+      self.time_fig.tight_layout()
       self.time_fig.savefig(f"{self.pathname}/time_plot.png", dpi=300, bbox_inches='tight')
 
 
@@ -549,7 +570,8 @@ class Analytics:
     self.dates = []
     self.values = []
     plt.ion()
-    self.day_fig, self.day_ax = plt.subplots(figsize=(20, 8))
+    self.day_fig, self.day_ax = plt.subplots(figsize=(20, 6))
+
     self.day_line, = self.day_ax.plot(self.dates, self.values, 'o-')
     self.day_ax.set_xlabel('Date')
     self.day_ax.set_ylabel('Number of Blocks')
@@ -568,15 +590,7 @@ class Analytics:
     capped_values = [min(v, percentile_95) for v in self.values]
     
     # Apply smoothing using rolling average
-    window_size = 7  # 7-day rolling average
-    if len(capped_values) > window_size:
-      smoothed_values = []
-      for i in range(len(capped_values)):
-        start_idx = max(0, i - window_size // 2)
-        end_idx = min(len(capped_values), i + window_size // 2 + 1)
-        smoothed_values.append(sum(capped_values[start_idx:end_idx]) / (end_idx - start_idx))
-    else:
-      smoothed_values = capped_values
+    smoothed_values = self.smooth_values(capped_values, window_size=21)  # 7-day rolling average
 
     # Plot both raw data and smoothed line
     self.day_ax.plot(self.dates, capped_values, 'o', alpha=0.3, color='#666666', markersize=3)
