@@ -300,6 +300,8 @@ class Analytics:
 
     self.analytics_file.write(f"\n\nTotal Block Count: {self.total_block_count}")
     self.analytics_file.write(f"\nTotal Word Count: {self.total_word_count}")
+    words_per_page = (450, 200)
+    self.analytics_file.write(f"\nPieces of paper saved by using Notion: {round(self.total_word_count / words_per_page[0])} - {round(self.total_word_count / words_per_page[1])}")
     self.analytics_file.write(f"\nMax Recursion Depth: {self.max_recursion_depth}")
 
     # Calculate time estimates for each component
@@ -634,7 +636,7 @@ class Analytics:
       width=1500,
       height=1500,
       background_color='black',
-      max_words=400,
+      max_words=1000,
       prefer_horizontal=0.9,
       scale=2,
       mask=make_notion_logo_mask() if self.word_cloud_as_notion_logo else None,
@@ -656,7 +658,7 @@ class Analytics:
     if end:
       print("Saving word cloud")
       self.cloud_fig.tight_layout()
-      self.cloud_fig.savefig(f"{self.pathname}/word_cloud.png", dpi=300, bbox_inches='tight', facecolor='black')
+      self.cloud_fig.savefig(f"{self.pathname}/word_cloud.png", dpi=500, bbox_inches='tight', facecolor='black')
 
 
   ########################### block type plot ###########################
