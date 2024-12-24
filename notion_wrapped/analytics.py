@@ -516,6 +516,7 @@ class Analytics:
 
   ########################### time plot ###########################
   def init_time_plot(self):
+    plt.style.use('dark_background')
     self.time_array = np.zeros(24 * 60)
     if self.show_graphs:
       plt.ion()
@@ -567,6 +568,7 @@ class Analytics:
   ########################### day plot ###########################
   def init_day_plot(self):
     self.day_dict = {}  # Dictionary to store the number of blocks per day
+    plt.style.use('dark_background')
     if self.show_graphs:
       plt.ion()
     self.dates = []
@@ -663,6 +665,7 @@ class Analytics:
 
   ########################### block type plot ###########################
   def init_block_type_plot(self):
+    plt.style.use('dark_background')
     self.block_type_count = {}
     if self.show_graphs:
       plt.ion()
