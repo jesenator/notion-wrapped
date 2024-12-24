@@ -3,7 +3,7 @@ from .notion_client import NotionClient
 from .recurse import NotionRecurser
 from .notion_wrapped import main
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 __author__ = "Jesse Gilbert"
 
 __all__ = [
