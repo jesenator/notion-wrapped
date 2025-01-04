@@ -337,7 +337,7 @@ class Analytics:
 
     self.analytics_file.write(f"\n\nTop 100 Most Common Words (also in word cloud):")
     sorted_word_counts = sorted(self.word_counts.items(), key=lambda x: x[1], reverse=True)
-    for word, count in sorted_word_counts[:100]:
+    for word, count in sorted_word_counts[:1000]:
       self.analytics_file.write(f"\n - {word}: {count}")
 
     self.analytics_file.flush()
