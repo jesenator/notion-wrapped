@@ -63,6 +63,8 @@ class Analytics:
 
     self.max_recursion_depth = 0
     self.error_count = 0
+    self.deepest_path = []  # To store the path of blocks that lead to max recursion depth
+    self.current_path = {}  # Dictionary to track current paths at each depth level
 
     self.get_users = get_users
     self.users = {}
@@ -239,7 +241,21 @@ class Analytics:
     # one off updates
     self.total_block_count +=1
     self.total_word_count += block_word_count
-    self.max_recursion_depth = max(self.max_recursion_depth, metadata.depth)
+    
+    # Store block information in the current path for this depth
+    block_info = {
+      'id': block_id,
+      'type': block_type,
+      'text': block_text[:35] + ("..." if len(block_text) > 35 else ""),
+      'created_date': str(block_created_date)
+    }
+    self.current_path[metadata.depth] = block_info
+    
+    # Check if we've found a new maximum depth
+    if metadata.depth > self.max_recursion_depth:
+      self.max_recursion_depth = metadata.depth
+      # Create a new deepest path from the current path
+      self.deepest_path = [self.current_path[d] for d in range(metadata.depth + 1) if d in self.current_path]
     
     self.progress_bar.n = self.total_block_count
     self.progress_bar.update(1)
@@ -303,6 +319,13 @@ class Analytics:
     words_per_page = (450, 200)
     self.analytics_file.write(f"\nPieces of paper saved by using Notion: {round(self.total_word_count / words_per_page[0])} - {round(self.total_word_count / words_per_page[1])}")
     self.analytics_file.write(f"\nMax Recursion Depth: {self.max_recursion_depth}")
+
+    # Add path to max recursion depth
+    if self.deepest_path:
+      self.analytics_file.write(f"\n\nPath to Maximum Recursion Depth:")
+      for i, block in enumerate(self.deepest_path):
+        indent = "  " * i
+        self.analytics_file.write(f"\n{indent}→ {block['type']}: {block['text']} (created: {block['created_date']})")
 
     # Calculate time estimates for each component
     block_time = self.total_block_count * (10 / 60) # 10 minutes per block
