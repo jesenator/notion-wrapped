@@ -23,6 +23,8 @@ class NotionClient:
         if response.status_code == 200:
           self.error_count = 0
           return response.json()
+        elif response.status_code == 404 or response.status_code == 400:
+          return None
         elif response.status_code == 429:
           retry_after = int(response.headers.get('Retry-After', 60))
           print(f"\n\n\nRate limited, waiting {retry_after} seconds...\n")
