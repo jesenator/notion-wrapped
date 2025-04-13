@@ -2,11 +2,14 @@ import requests
 import time
 import sys
 from requests.exceptions import ConnectionError, RequestException
+import requests_cache
+from pathlib import Path
+import sqlite3
 
 database_page_title = "database_page"
 
 class NotionClient:
-  def __init__(self, notion_api_token):
+  def __init__(self, notion_api_token, cache_mode="use-cache", cache_dir="cache"):
     self.error_count = 0
     self.headers = {
       "Authorization": f"Bearer {notion_api_token}",
@@ -16,10 +19,39 @@ class NotionClient:
     self.max_retries = 5
     self.base_delay = 1
 
+    # Set up caching
+    self.cache_mode = cache_mode
+    if self.cache_mode != "no-cache":
+      cache_dir_path = Path(cache_dir)
+      cache_dir_path.mkdir(parents=True, exist_ok=True)
+      self.session = requests_cache.CachedSession(
+        cache_name=str(cache_dir_path),
+        backend='filesystem',
+        expire_after=None,  # Cache never expires
+        use_cache_dir=False,  # Don't use cache directory, use our specified path
+        cache_control=True,
+        stale_if_error=True
+      )
+      self.session.headers.update(self.headers)
+
+      if self.cache_mode == "rebuild-cache":
+        self.session.cache.clear()
+    else:
+      self.session = requests.Session()
+      self.session.headers.update(self.headers)
+
   def make_request(self, method, url, **kwargs):
     while self.error_count <= self.max_retries:
       try:
-        response = requests.request(method, url, headers=self.headers, **kwargs)
+        if self.cache_mode != "no-cache":
+          try:
+            response = self.session.request(method, url, **kwargs)
+          except (sqlite3.InterfaceError, sqlite3.OperationalError) as e:
+            print(f"\n\n\nCache operation failed: {str(e)}. Falling back to non-cached request.\n\n\n")
+            response = requests.request(method, url, headers=self.headers, **kwargs)
+        else:
+          response = requests.request(method, url, headers=self.headers, **kwargs)
+
         if response.status_code == 200:
           self.error_count = 0
           return response.json()

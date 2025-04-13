@@ -38,17 +38,16 @@ def main():
     help='Maximum number of children per block')
   recurser_args.add_argument('--max-blocks', type=int, metavar='N',
     help='Maximum total blocks to process')
-  recurser_args.add_argument('--cache-mode', 
-    choices=['live', 'cached', 'save'], 
-    default='live',
-    help='Cache mode: live (no cache), cached (use cache), or save (save to cache)')
+  
+  # Add API caching options
+  cache_args = parser.add_argument_group('API caching options')
+  cache_args.add_argument('--cache-mode', choices=["use-cache", "rebuild-cache", "no-cache"], default="use-cache",
+    help='Cache mode: use-cache (default), rebuild-cache (clear and rebuild cache), or no-cache (no caching)')
   
   parser.add_argument('--version', action='version',
     version=f'notion-wrapped {__import__("notion_wrapped").__version__}')
 
   args = parser.parse_args()
-  if args.cache_mode == 'cached':
-    print("Using cached data from last time you ran this script with cache mode save. This disregards the current page_ids argument.")
 
   try:
     tqdm.write("\033[91m" + "=" * 40)
@@ -64,24 +63,20 @@ def main():
       word_cloud_as_notion_logo=args.word_cloud_as_notion_logo,
       last_n_years=args.last_n_years
     )
-    notion_recurser = NotionRecurser(args.notion_token, max_workers=10)
+    notion_recurser = NotionRecurser(
+      args.notion_token, 
+      max_workers=10,
+      cache_mode=args.cache_mode,
+    )
 
     for page_id in args.page_ids:
-      page_id = utils.extract_notion_id(page_id) if '/' in page_id else page_id
-      if not page_id:
-        raise ValueError(f"Invalid Notion page ID or URL provided")
-
       notion_recurser.start_recursion(
         page_id,
         mapping_function=analytics.add_block,
         max_depth=args.max_depth,
         max_children=args.max_children,
-        max_blocks=args.max_blocks,
-        cache_mode=args.cache_mode
+        max_blocks=args.max_blocks
       )
-
-      if args.cache_mode == 'cached':
-        break
 
     analytics.end_of_recursion()
 
@@ -90,12 +85,8 @@ def main():
     tqdm.write("\n\033[91mNote: I recommend removing permissions from the API key after use\033[0m")
 
     return 0
-
-  except KeyboardInterrupt:
-    tqdm.write("\nOperation cancelled by user")
-    return 130
   except Exception as e:
-    tqdm.write(f"\033[91mError: {str(e)}\033[0m")
+    tqdm.write(f"\n\n\033[91mError: {str(e)}\033[0m")
     return 1
 
 if __name__ == "__main__":

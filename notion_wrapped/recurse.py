@@ -9,6 +9,7 @@ from dataclasses import dataclass, asdict
 
 from wakepy import keep
 from .notion_client import NotionClient
+from .utils import extract_notion_id
 
 
 @dataclass
@@ -20,77 +21,36 @@ class BlockMetadata:
 
 
 class NotionRecurser:
-  def __init__(self, notion_api_token, max_workers=10, cache_file="cache/notion_cache.json"):
-    self.client = NotionClient(notion_api_token)
+  def __init__(self, notion_api_token, max_workers=10, cache_mode="use-cache", cache_dir="cache"):
+    self.client = NotionClient(notion_api_token, cache_mode=cache_mode, cache_dir=cache_dir)
 
     self.max_workers = max_workers
     self.current_worker_count = 1
 
-    self.cache_file = Path(cache_file)
-    self.blocks_cache = []
     self.block_counter = count()
     self.block_counter_lock = Lock()
+    self.current_block_count = 0
 
-  def load_cache(self):
-    if self.cache_file.exists():
-      self.blocks_cache = []
-      with open(self.cache_file) as f:
-        for line in f:
-          self.blocks_cache.append(json.loads(line))
-    else:
-      raise ValueError("Cache file does not exist")
-    return self.blocks_cache
-
-  def start_recursion(self, parent_block, cache_mode='live', **kwargs):
+  def start_recursion(self, parent_block, **kwargs):
     with keep.running():
       if 'reducing_function' in kwargs and self.max_workers > 1:
         print("Warning: reducing function might not work as intended with multiple workers.")
-      if cache_mode != 'cached' and not isinstance(parent_block, dict):
-        parent_block = self.client.get_block(parent_block)
-      
-      if cache_mode == 'cached':
-        self.load_cache()
-        if kwargs.get('reducing_function'):
-          print(f"reducing function with cached data not yet implemented")
+      if isinstance(parent_block, dict):
+        parent_block_obj = parent_block
+      else:
+        parent_block_extracted = extract_notion_id(parent_block) if '/' in parent_block else parent_block
+        if not parent_block_extracted:
+          raise ValueError(f"Invalid Notion page ID or URL provided: `{parent_block}`")
+        parent_block_obj = self.client.get_block(parent_block_extracted)
 
-        for i, block_data in enumerate(self.blocks_cache):
-          if (kwargs.get('max_blocks') and i > kwargs.get('max_blocks')) or kwargs.get('max_children') and block_data['child_num'] > kwargs.get('max_children'):
-            break
-          if(kwargs.get('max_depth') and block_data['depth'] > kwargs.get('max_depth')):
-            continue
-          if kwargs.get('mapping_function'):
-            metadata = BlockMetadata(
-              depth=block_data['depth'],
-              child_num=block_data['child_num'],
-              block_num=i, # change to block_data['block_num'] once I recache
-              is_main_thread=block_data['is_main_thread']
-            )
-            kwargs.get('mapping_function')(block_data['block'], metadata)
-        
-      elif cache_mode == 'save':
-        mapping_function = kwargs.pop('mapping_function')
-        self.cache_file.write_text('')
-        cache_fp = open(self.cache_file, "a")
-        
-        def save_block_to_cache(block, metadata):
-          if mapping_function:
-            mapping_function(block, metadata)
-          block_data = {
-            "block": block,
-            **asdict(metadata)
-          }
-          cache_fp.write(json.dumps(block_data) + "\n")
-
-        try:
-          return self._recurse(parent_block, 0, 0, is_main_thread=True, mapping_function=save_block_to_cache, **kwargs)
-        finally:
-          cache_fp.close()
-      else: # cache_mode == 'live':
-        try:
-          self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
-          return self._recurse(parent_block, 0, 0, is_main_thread=True, **kwargs)
-        finally:
-          self.executor.shutdown(wait=True)
+      if parent_block_obj is None:
+        raise ValueError(f"Parent block not found: `{parent_block}`")
+      try:
+        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        result = self._recurse(parent_block_obj, 0, 0, is_main_thread=True, **kwargs)
+        return result
+      finally:
+        self.executor.shutdown(wait=True)
 
   def _recurse(
     self,
@@ -106,7 +66,7 @@ class NotionRecurser:
   ):
     with self.block_counter_lock:
       block_num = next(self.block_counter)
-
+      self.current_block_count = block_num
     if (max_children is not None and child_num > max_children) or (max_blocks is not None and block_num > max_blocks):
       return reducing_function(parent_block)
 
@@ -153,9 +113,9 @@ class NotionRecurser:
         child_results.append(child_result)
 
       next_cursor = response_data.get('next_cursor')
-      if not next_cursor:
+      if not next_cursor or (max_blocks is not None and self.current_block_count > max_blocks):
         block_id = None
-  
+
     return reducing_function(parent_block, child_results)
 
   def decrease_thread_count(self):
