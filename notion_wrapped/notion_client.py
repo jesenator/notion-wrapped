@@ -30,7 +30,8 @@ class NotionClient:
         expire_after=None,  # Cache never expires
         use_cache_dir=False,  # Don't use cache directory, use our specified path
         cache_control=True,
-        stale_if_error=True
+        stale_if_error=True,
+        allowable_methods=('GET', 'POST'),  # Allow caching of POST requests
       )
       self.session.headers.update(self.headers)
 
