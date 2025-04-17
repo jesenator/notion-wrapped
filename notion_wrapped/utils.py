@@ -6,6 +6,9 @@ database_page_title = "database_page"
 
 
 def get_words(block, just_title=False, just_property=None):
+  if not block:
+    return ""
+
   if block['object'] == "page":
     block_type = database_page_title
   else:
@@ -20,7 +23,7 @@ def get_words(block, just_title=False, just_property=None):
       return " ".join(text['plain_text'] for text in property_value[property_type])
     elif property_type in ['select', 'multi_select', 'files'] and property_value[property_type]:
       return " ".join(item['name'] for item in property_value[property_type] if isinstance(item, dict))
-    elif property_type in ["number"] and property_value[property_type]: # removed , "date"
+    elif property_type in ["number", "date"] and property_value[property_type]: # removed then replaced, "date"
       return str(property_value[property_type])
     return ""
 
@@ -69,8 +72,13 @@ def extract_notion_id( url):
 
 def create_reducing_function(joining_function, block_reducing_function):
   def reducing_function(parent_block, child_results=None):
-    return joining_function((child_results or []) + [block_reducing_function(parent_block)])
+    child_results = child_results or []
+    child_results = [result for result in child_results if result]
+    return joining_function([block_reducing_function(parent_block)] + child_results)
   return reducing_function
+  # I think this joining part should actually be more configurable by the joining function in order to have a fully general create_reducing_function function
+
+  # ideally the reduce function should take in a accumulator and current value, and return the accumulator, but I think this doesn't quite work because it needs to do the function on the new values separately and the n combine them. Because of the multipled workers, maybe I should have it not work for multiple workers then.
 
 add_text = create_reducing_function(lambda x: "\n".join(x), get_words)
 add_word_count = create_reducing_function(sum, lambda x: count_words_in_text(get_words(x)))
