@@ -60,17 +60,20 @@ class NotionRecurser:
     max_depth=None,
     max_children=None,
     max_blocks=None,
-    mapping_function=None,
+    mapping_function=lambda block, metadata: None,
     reducing_function=lambda parent, children=None: None,
+    map_and_reduce_on_parent=False,
     is_main_thread=False
   ):
     with self.block_counter_lock:
       block_num = next(self.block_counter)
       self.current_block_count = block_num
     if (max_children is not None and child_num > max_children) or (max_blocks is not None and block_num > max_blocks):
-      return reducing_function(parent_block)
+      return
 
-    if mapping_function:
+    do_map_and_reduce = depth != 0 or map_and_reduce_on_parent
+
+    if do_map_and_reduce:
       mapping_function(parent_block, BlockMetadata(depth, child_num, block_num, is_main_thread))
 
     if max_depth is not None and (depth + 1) > max_depth:
@@ -115,8 +118,10 @@ class NotionRecurser:
       next_cursor = response_data.get('next_cursor')
       if not next_cursor or (max_blocks is not None and self.current_block_count > max_blocks):
         block_id = None
-
-    return reducing_function(parent_block, child_results)
+    if do_map_and_reduce:
+      return reducing_function(parent_block, child_results)
+    else:
+      return reducing_function(None, child_results)
 
   def decrease_thread_count(self):
     self.current_worker_count -= 1
