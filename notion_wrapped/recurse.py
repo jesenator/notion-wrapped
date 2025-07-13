@@ -32,6 +32,10 @@ class NotionRecurser:
     self.current_block_count = 0
 
   def start_recursion(self, parent_block, **kwargs):
+    self.block_counter = count()
+    self.current_block_count = 0
+    self.current_worker_count = 1
+    
     with keep.running():
       if 'reducing_function' in kwargs and self.max_workers > 1:
         print("Warning: reducing function might not work as intended with multiple workers.")
