@@ -17,14 +17,25 @@ def get_words(block, just_title=False, just_property=None):
   def extract_text(property_value):
     if not property_value:
       return ""
-    property_type = property_value['type']
     # print(json.dumps(property_value, indent=4))
+    property_type = property_value['type']
+    val = property_value.get(property_type, "")
+    if not val:
+      return ""
+
     if property_type in ['title', 'rich_text']:
-      return " ".join(text['plain_text'] for text in property_value[property_type])
-    elif property_type in ['select', 'multi_select', 'files'] and property_value[property_type]:
-      return " ".join(item['name'] for item in property_value[property_type] if isinstance(item, dict))
-    elif property_type in ["number", "date"] and property_value[property_type]: # removed then replaced, "date"
-      return str(property_value[property_type])
+      return " ".join(text['plain_text'] for text in val)
+    elif property_type == 'select':
+      return val['name']
+    elif property_type in ['multi_select', 'files']:
+      return " ".join(item['name'] for item in val if isinstance(item, dict))
+    elif property_type == "number":
+      return str(val)
+    elif property_type == "date":
+      if val['end']:
+        return f"{val['start']} -> {val['end']}"
+      else:
+        return str(val['start'])
     return ""
 
   if just_property == 'icon' and block.get('icon'):
