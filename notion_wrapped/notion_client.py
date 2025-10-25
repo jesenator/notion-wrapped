@@ -110,8 +110,40 @@ class NotionClient:
     url = f"https://api.notion.com/v1/users/{user_id}"
     response = self.make_request("GET", url)
     return response.get('name', 'N/A') if response else 'N/A'
-  
-  ## This function isn't used for the Notion wrapped program, but can be used with recurse.py for easy interaction with the Notion API to update database properties
+
+  ## These functions aren't used for the Notion wrapped program, but can be used with recurse.py for easy interaction with the Notion API to update database properties
+
+  def upload_file(self, file_path, content_type="image/png"):
+    create_upload_url = "https://api.notion.com/v1/file_uploads"
+    filename = Path(file_path).name
+    
+    create_upload_payload = {
+      "mode": "single_part",
+      "filename": filename,
+      "content_type": content_type
+    }
+    
+    response = requests.post(create_upload_url, headers=self.headers, json=create_upload_payload)
+    if response.status_code != 200:
+      raise Exception(f"Failed to create file upload: {response.text}")
+    
+    upload_data = response.json()
+    upload_url = upload_data["upload_url"]
+    file_upload_id = upload_data["id"]
+    
+    with open(file_path, "rb") as image_file:
+      upload_headers = {
+        "Authorization": self.headers["Authorization"],
+        "Notion-Version": self.headers["Notion-Version"]
+      }
+      files = {"file": (filename, image_file, content_type)}
+      upload_response = requests.post(upload_url, files=files, headers=upload_headers)
+    
+    if upload_response.status_code != 200:
+      raise Exception(f"Failed to upload file data: {upload_response.text}")
+    
+    return file_upload_id
+
   def update_property(self, block, property_name, property_value):
     def update_block_property(block, property_name, property_value):
       if block['object'] == "page":
@@ -133,21 +165,37 @@ class NotionClient:
 
       property_type = block["properties"][property_name]["type"]
       if property_type == "files":
-        payload = {
-          "properties": {
-            property_name: {
-              "files": [
-                {
-                  "type": "external",
-                  "name": "file or url",
-                  "external": {
-                    "url": property_value
+        if property_value.startswith("file_upload:"):
+          file_upload_id = property_value.replace("file_upload:", "")
+          payload = {
+            "properties": {
+              property_name: {
+                "files": [
+                  {
+                    "type": "file_upload",
+                    "file_upload": {
+                      "id": file_upload_id
+                    }
                   }
-                }
-              ]
+                ]
+              }
             }
           }
-        }
+        else:
+          payload = {
+            "properties": {
+              property_name: {
+                "files": [
+                  {
+                    "name": "file or url",
+                    "external": {
+                      "url": property_value
+                    }
+                  }
+                ]
+              }
+            }
+          }
       elif property_type == "rich_text":
         payload = {
           "properties": {
