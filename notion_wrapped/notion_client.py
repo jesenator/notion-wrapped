@@ -97,9 +97,13 @@ class NotionClient:
     params = {"start_cursor": start_cursor} if start_cursor else {}
     return self.make_request("GET", url, params=params)
 
-  def query_database(self, database_id, start_cursor=None):
+  def query_database(self, database_id, start_cursor=None, sorts=None):
     url = f"https://api.notion.com/v1/databases/{database_id}/query"
-    payload = {"start_cursor": start_cursor} if start_cursor else {}
+    payload = {}
+    if start_cursor:
+      payload["start_cursor"] = start_cursor
+    if sorts:
+      payload["sorts"] = sorts
     return self.make_request("POST", url, json=payload)
 
   def get_user_name(self, user_id):

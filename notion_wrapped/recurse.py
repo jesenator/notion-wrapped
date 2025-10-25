@@ -67,7 +67,8 @@ class NotionRecurser:
     mapping_function=lambda block, metadata: None,
     reducing_function=lambda parent, children=None: None,
     map_and_reduce_on_parent=False,
-    is_main_thread=False
+    is_main_thread=False,
+    database_sorts=None
   ):
     with self.block_counter_lock:
       block_num = next(self.block_counter)
@@ -93,7 +94,7 @@ class NotionRecurser:
       if block_object != "page" and (parent_block['type'] == 'unsupported' or (parent_block['type'] == 'synced_block' and parent_block['synced_block'] != None)):
         break
       elif block_object != "page" and parent_block['type'] == "child_database" and self.client.check_if_base_database(block_id):
-        response_data = self.client.query_database(block_id, next_cursor)
+        response_data = self.client.query_database(block_id, next_cursor, sorts=database_sorts)
       elif block_object == "page" or parent_block.get('has_children'):    
         response_data = self.client.get_block_children(block_id, next_cursor)
       else:
@@ -106,12 +107,12 @@ class NotionRecurser:
       futures = []
       for block in blocks:
         if self.current_worker_count < (self.max_workers):
-          future = self.executor.submit(self._recurse, block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, False)
+          future = self.executor.submit(self._recurse, block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, False, False, database_sorts)
           futures.append(future)
           self.current_worker_count += 1
           future.add_done_callback(lambda f: self.decrease_thread_count())
         else:
-          child_result = self._recurse(block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, is_main_thread)
+          child_result = self._recurse(block, depth + 1, child_count, max_depth, max_children, max_blocks, mapping_function, reducing_function, is_main_thread, database_sorts)
           child_results.append(child_result)
         child_count += 1
 
