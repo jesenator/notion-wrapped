@@ -36,6 +36,8 @@ def get_words(block, just_title=False, just_property=None):
         return f"{val['start']} -> {val['end']}"
       else:
         return str(val['start'])
+    elif property_type == "formula":
+      return extract_text(val)
     return ""
 
   if just_property == 'icon' and block.get('icon'):
