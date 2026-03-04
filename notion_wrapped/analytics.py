@@ -651,7 +651,7 @@ class Analytics:
       from PIL import Image
       from io import BytesIO
       
-      response = requests.get('https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png')
+      response = requests.get('https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png', timeout=30)
       notion_logo = np.array(Image.open(BytesIO(response.content)).convert("RGB"))
       mask = notion_logo[:, :, 0]
       mask = 255 - mask

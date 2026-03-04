@@ -21,8 +21,8 @@ class BlockMetadata:
 
 
 class NotionRecurser:
-  def __init__(self, notion_api_token, max_workers=10, cache_mode="use-cache", cache_dir="cache"):
-    self.client = NotionClient(notion_api_token, cache_mode=cache_mode, cache_dir=cache_dir)
+  def __init__(self, notion_api_token, max_workers=10, cache_mode="use-cache", cache_dir="cache", timeout=20):
+    self.client = NotionClient(notion_api_token, cache_mode=cache_mode, cache_dir=cache_dir, timeout=timeout)
 
     self.max_workers = max_workers
     self.current_worker_count = 1

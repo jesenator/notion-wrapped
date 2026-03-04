@@ -1,7 +1,7 @@
 import requests
 import time
 import sys
-from requests.exceptions import ConnectionError, RequestException
+from requests.exceptions import ConnectionError, RequestException, ReadTimeout
 import requests_cache
 from pathlib import Path
 import sqlite3
@@ -9,7 +9,7 @@ import sqlite3
 database_page_title = "database_page"
 
 class NotionClient:
-  def __init__(self, notion_api_token, cache_mode="use-cache", cache_dir="cache"):
+  def __init__(self, notion_api_token, cache_mode="use-cache", cache_dir="cache", timeout=20):
     self.error_count = 0
     self.headers = {
       "Authorization": f"Bearer {notion_api_token}",
@@ -18,6 +18,7 @@ class NotionClient:
     }
     self.max_retries = 5
     self.base_delay = 1
+    self.timeout = timeout
 
     # Set up caching
     self.cache_mode = cache_mode
@@ -42,6 +43,7 @@ class NotionClient:
       self.session.headers.update(self.headers)
 
   def make_request(self, method, url, **kwargs):
+    kwargs.setdefault('timeout', self.timeout)
     while self.error_count <= self.max_retries:
       try:
         if self.cache_mode != "no-cache":
@@ -72,7 +74,7 @@ class NotionClient:
             print("ERROR, EXITING")
             sys.exit(1)
           continue
-      except (ConnectionError, RequestException) as e:
+      except (ConnectionError, ReadTimeout, RequestException) as e:
         self.error_count += 1
         delay = min(self.base_delay * (2 ** (self.error_count - 1)), 32)
         print(f"\n\n\nConnection Error: {str(e)}\nRetrying in {delay} seconds...\n")
@@ -123,7 +125,7 @@ class NotionClient:
       "content_type": content_type
     }
     
-    response = requests.post(create_upload_url, headers=self.headers, json=create_upload_payload)
+    response = requests.post(create_upload_url, headers=self.headers, json=create_upload_payload, timeout=self.timeout)
     if response.status_code != 200:
       raise Exception(f"Failed to create file upload: {response.text}")
     
@@ -137,7 +139,7 @@ class NotionClient:
         "Notion-Version": self.headers["Notion-Version"]
       }
       files = {"file": (filename, image_file, content_type)}
-      upload_response = requests.post(upload_url, files=files, headers=upload_headers)
+      upload_response = requests.post(upload_url, files=files, headers=upload_headers, timeout=self.timeout)
     
     if upload_response.status_code != 200:
       raise Exception(f"Failed to upload file data: {upload_response.text}")
@@ -227,6 +229,6 @@ class NotionClient:
     url = f"https://api.notion.com/v1/pages/{page_id}"
     payload = update_block_property(block, property_name, property_value)
     if payload:
-      response = requests.patch(url, headers=self.headers, json=payload)
+      response = requests.patch(url, headers=self.headers, json=payload, timeout=self.timeout)
       return response.status_code == 200
     return False
